@@ -1,17 +1,29 @@
 import { useState } from 'react';
 import { canAfford } from '../../lib/wallet';
-import { getTodayStr, isPast } from '../../lib/dates';
+import { getBusinessSlotsForDate, getTodayStr, isPast } from '../../lib/dates';
 import { useFeedback } from '../../context/FeedbackContext';
 import { sounds } from '../../lib/sound';
 import Field from '../ui/Field';
 
-const blank = () => ({ name: '', phone: '', service: '', date: getTodayStr(), time: '10:00' });
+const blank = (business) => ({
+  name: '',
+  phone: '',
+  service: business.services[0] || '',
+  date: getTodayStr(),
+  time: getBusinessSlotsForDate(business, getTodayStr())[0] || '',
+});
 
 export default function ManualBookingForm({ business, onBook }) {
-  const [f, setF] = useState(blank);
+  const [f, setF] = useState(() => blank(business));
   const { toast, burst } = useFeedback();
   const noBalance = !canAfford(business);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const dateSlots = getBusinessSlotsForDate(business, f.date);
+  const setDate = (event) => {
+    const date = event.target.value;
+    const slots = getBusinessSlotsForDate(business, date);
+    setF((current) => ({ ...current, date, time: slots.includes(current.time) ? current.time : slots[0] || '' }));
+  };
 
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +39,7 @@ export default function ManualBookingForm({ business, onBook }) {
     sounds.splash();
     burst(rect ? rect.left + rect.width / 2 : undefined, rect ? rect.top : undefined);
     toast(`Cita agendada para ${f.name.trim()}.`, { type: 'success' });
-    setF(blank());
+    setF(blank(business));
   };
 
   return (
@@ -37,14 +49,20 @@ export default function ManualBookingForm({ business, onBook }) {
         <Field label="Teléfono">{(id) => <input id={id} type="tel" className="glass-input" placeholder="+503 7000 0000" required value={f.phone} onChange={set('phone')} />}</Field>
         <Field label="Servicio">
           {(id) => (
-            <>
-              <input id={id} className="glass-input" list="svc-list" placeholder="Ej. Corte y peinado" required value={f.service} onChange={set('service')} />
-              <datalist id="svc-list">{business.services.map((s) => <option key={s} value={s} />)}</datalist>
-            </>
+            <select id={id} className="glass-input" required value={f.service} onChange={set('service')}>
+              {business.services.map((service) => <option key={service} value={service}>{service}</option>)}
+            </select>
           )}
         </Field>
-        <Field label="Fecha">{(id) => <input id={id} type="date" className="glass-input" min={getTodayStr()} required value={f.date} onChange={set('date')} />}</Field>
-        <Field label="Hora">{(id) => <input id={id} type="time" className="glass-input" required value={f.time} onChange={set('time')} />}</Field>
+        <Field label="Fecha">{(id) => <input id={id} type="date" className="glass-input" min={getTodayStr()} required value={f.date} onChange={setDate} />}</Field>
+        <Field label="Hora">
+          {(id) => (
+            <select id={id} className="glass-input" required value={f.time} onChange={set('time')}>
+              {dateSlots.length === 0 && <option value="" disabled>El salón no trabaja este día</option>}
+              {dateSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+            </select>
+          )}
+        </Field>
       </div>
       <button type="submit" className="btn-primary" disabled={noBalance || busy}>{busy ? 'Agendando…' : 'Agendar cita'}</button>
       {noBalance && (

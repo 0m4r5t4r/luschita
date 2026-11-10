@@ -5,8 +5,9 @@ Proyecto de la materia de Frameworks. Migración de la versión HTML/JS a **Reac
 
 ## Puesta en marcha (3 pasos)
 
-**1. Base de datos (una sola vez).** En Supabase → *SQL Editor* → *New query*, pega TODO el contenido de
-`supabase/schema.sql` y pulsa **Run**. Crea las tablas, la seguridad (RLS) y las funciones del monedero.
+**1. Base de datos.** En Supabase → *SQL Editor* → *New query*, pega TODO el contenido de
+`supabase/schema.sql` y pulsa **Run**. Si ya configuraste una versión anterior, vuelve a ejecutar el script para
+agregar precios, foto del negocio, permisos de almacenamiento y la función de edición del perfil.
 
 **2. (Recomendado para la demo) Desactiva la confirmación por correo.**
 *Authentication → Sign In / Providers → Email → desactiva "Confirm email"*. Si la dejas activa, todo funciona,
@@ -24,7 +25,7 @@ npm run build     # build de producción en /dist
 
 | Tabla / vista | Para qué |
 |---|---|
-| `businesses` | Un negocio por usuario de Auth (`id = auth.users.id`), con su saldo |
+| `businesses` | Un negocio por usuario de Auth (`id = auth.users.id`), con su saldo, servicios, precios, horarios e imagen |
 | `appointments` | Citas; índice único = un cupo no se puede reservar dos veces |
 | `wallet_transactions` | Historial del monedero (bono, cobros, recargas) |
 | `public_businesses` / `public_taken_slots` | Vistas públicas para "Explorar" (sin teléfono, email ni saldo) |
@@ -33,6 +34,9 @@ npm run build     # build de producción en /dist
   `update/insert`; solo mediante funciones SQL (`book_appointment`, `set_appointment_status`,
   `add_manual_appointment`, `recharge_wallet`), que validan y cobran de forma atómica.
 - **Registro:** `supabase.auth.signUp` + trigger `handle_new_user` crea el negocio y el bono de 5 USD.
+- **Administración:** el panel permite editar el perfil del salón, subir su imagen, gestionar servicios y precios, y definir días de trabajo y horarios específicos para cada día de la semana.
+- **Fotos:** se guardan en el bucket público `business-photos`; las políticas solo permiten a cada negocio administrar sus propios archivos.
+- **Reservas:** los clientes ven el catálogo y los precios públicos del salón. Los cambios de horario aplican a nuevas reservas; las citas existentes se conservan.
 - **Login real:** Supabase Auth (contraseñas cifradas, sesión persistente).
 - El script se probó en un Postgres local (41 pruebas: registro, doble reserva, cobro único, recarga, aislamiento).
 
@@ -77,6 +81,7 @@ src/
 - Agenda semanal con puntos por estado; avatares con iniciales; transiciones al aceptar/cancelar.
 - Toasts de cristal (reemplazan `alert()`), explosión de burbujas en acciones exitosas.
 - Landing con "cómo funciona", búsqueda en Explorar, paquetes de recarga visuales, botón de silencio.
+- Experiencia enfocada en salones de belleza, con catálogo de precios y diseño adaptable a móviles.
 - Respeta `prefers-reduced-motion`.
 
 ## Notas

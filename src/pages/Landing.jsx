@@ -4,9 +4,9 @@ import PageTransition from '../components/ui/PageTransition';
 import { sounds } from '../lib/sound';
 
 const STEPS = [
-  { icon: '🔎', title: 'Encuentra', text: 'Explora negocios por categoría: belleza, spa, salud, fitness y más.' },
-  { icon: '🗓️', title: 'Elige tu cupo', text: 'Mira los horarios libres en tiempo real y escoge el que mejor te quede.' },
-  { icon: '💬', title: 'Confirma', text: 'Deja tu teléfono: el negocio te contacta para confirmar tu cita.' },
+  { icon: '🔎', title: 'Elige tu salón', text: 'Descubre salones de belleza y encuentra el servicio ideal para ti.' },
+  { icon: '🗓️', title: 'Reserva tu cita', text: 'Consulta precios y horarios disponibles antes de elegir tu espacio.' },
+  { icon: '💬', title: 'Conecta', text: 'Deja tu teléfono para que el salón pueda confirmar tu reserva.' },
 ];
 
 export default function Landing() {
@@ -16,8 +16,8 @@ export default function Landing() {
       <section className="hero">
         <div className="hero-title">
           <span className="hero-eyebrow">✨ Citas en línea, sin fricción</span>
-          <h1>Reserva en tus negocios favoritos</h1>
-          <p>Encuentra tu negocio, elige un cupo disponible y reserva en segundos.</p>
+          <h1>Tu próxima cita de belleza empieza aquí</h1>
+          <p>Encuentra un salón, elige tu servicio favorito y reserva en segundos.</p>
         </div>
         <div className="hero-orbs" aria-hidden="true">
           <span className="gem gem-1">🌸</span>
@@ -40,7 +40,7 @@ export default function Landing() {
       <div className="auth-split">
         <div className="auth-panel spot cta-panel">
           <div className="cta-flower">🌸</div>
-          <h3>¿Quieres reservar una cita?</h3>
+          <h3>¿Lista para tu próxima cita?</h3>
           <p>
             No necesitas crear cuenta. Solo explora los negocios, elige un cupo disponible y deja tu teléfono para que
             te contacten.

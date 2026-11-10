@@ -15,6 +15,7 @@ import WeekStrip from '../components/dashboard/WeekStrip';
 import AppointmentList from '../components/dashboard/AppointmentList';
 import ManualBookingForm from '../components/dashboard/ManualBookingForm';
 import RechargeModal from '../components/dashboard/RechargeModal';
+import BusinessManager from '../components/dashboard/BusinessManager';
 
 const FILTERS = [
   { value: 'all', label: 'Todas' },
@@ -82,7 +83,7 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div className="dashboard-welcome">
           <h1>{biz.name}</h1>
-          <p>Gestiona las citas de tu negocio</p>
+          <p>Tu agenda de belleza y reservas, en un solo lugar.</p>
           <span className="business-type-badge">{cfg.icon} {biz.type}</span>
         </div>
         <button className="btn-secondary" onClick={logout}>Cerrar sesión</button>
@@ -102,6 +103,7 @@ export default function Dashboard() {
 
       <ReminderBox appointments={appointments} />
       <StatsRow appointments={appointments} />
+      <BusinessManager business={biz} />
 
       <section className="appointments-section first">
         <div className="section-header">
@@ -113,7 +115,11 @@ export default function Dashboard() {
 
       <section className="appointments-section">
         <div className="section-header"><h2>Agregar cita manualmente</h2></div>
-        <ManualBookingForm business={biz} onBook={async (appointment) => (await actions.addManual(appointment)).error} />
+        <ManualBookingForm
+          key={`${biz.services.join('|')}-${JSON.stringify(biz.weeklySchedule)}`}
+          business={biz}
+          onBook={async (appointment) => (await actions.addManual(appointment)).error}
+        />
       </section>
 
       <section className="appointments-section">

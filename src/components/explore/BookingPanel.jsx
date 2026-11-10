@@ -23,6 +23,7 @@ export default function BookingPanel({ business, onBack }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const available = canAfford(business);
+  const servicePrice = service ? business.servicePrices?.[service] : null;
 
   // Al abrir un negocio nuevo: reinicia el formulario y desplaza la vista.
   useEffect(() => {
@@ -60,9 +61,10 @@ export default function BookingPanel({ business, onBack }) {
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
     >
       <div className="business-public-header" style={{ '--hue': cfg.hue }}>
-        <div className="public-icon">{cfg.icon}</div>
+        <div className="public-icon">{business.imageUrl ? <img src={business.imageUrl} alt="" /> : cfg.icon}</div>
         <h1 style={{ fontSize: '1.6rem' }}>{business.name}</h1>
         <span className="public-type">{cfg.icon} {business.type}</span>
+        {business.type === 'Salón de belleza' && <span className="salon-caption">Belleza y cuidado personal</span>}
       </div>
 
       <div className="booking-steps">
@@ -70,14 +72,23 @@ export default function BookingPanel({ business, onBack }) {
           {(id) => (
             <select id={id} className="glass-input" value={service} onChange={(e) => setService(e.target.value)}>
               <option value="" disabled>Selecciona un servicio</option>
-              {business.services.map((s) => <option key={s} value={s}>{s}</option>)}
+              {business.services.map((s) => {
+                const price = business.servicePrices?.[s];
+                return <option key={s} value={s}>{s}{price == null ? '' : ` · $${Number(price).toFixed(2)}`}</option>;
+              })}
             </select>
           )}
         </Field>
+        {service && (
+          <div className="booking-service-price">
+            <span>Precio del servicio</span>
+            <strong>{servicePrice == null ? 'Consultar con el salón' : `$${Number(servicePrice).toFixed(2)} USD`}</strong>
+          </div>
+        )}
 
         <div className="input-group" style={{ marginBottom: '0.8rem' }}>
           <label>② Elige un día</label>
-          <DateSelector value={date} onChange={(d) => { setDate(d); setSlot(null); }} />
+          <DateSelector value={date} business={business} onChange={(d) => { setDate(d); setSlot(null); }} />
         </div>
 
         <div className="input-group" style={{ marginBottom: '1.2rem' }}>

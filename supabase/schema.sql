@@ -25,13 +25,21 @@ create table if not exists public.businesses (
   phone           text        not null unique,
   type            text        not null,
   services        text[]      not null default '{}',
+  service_prices  jsonb       not null default '{}'::jsonb,
   slots           text[]      not null default array['09:00','10:00','11:00','12:00','13:00','16:00','17:00','18:00','19:00'],
+  weekly_schedule jsonb       not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb,
+  image_url       text,
   balance         numeric(10,2) not null default 5.00 check (balance >= 0),
   total_spent     numeric(10,2) not null default 0,
   total_recharged numeric(10,2) not null default 0,
   is_trial        boolean     not null default true,
   created_at      timestamptz not null default now()
 );
+
+alter table public.businesses
+  add column if not exists service_prices jsonb not null default '{}'::jsonb,
+  add column if not exists image_url text,
+  add column if not exists weekly_schedule jsonb not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb;
 
 create table if not exists public.appointments (
   id          uuid primary key default gen_random_uuid(),
@@ -140,7 +148,7 @@ create trigger on_auth_user_created
 
 -- Negocios visibles en "Explorar": sin teléfono, email ni saldo exacto.
 create or replace view public.public_businesses as
-  select id, name, type, services, slots, (balance >= 0.25) as available
+  select id, name, type, services, slots, (balance >= 0.25) as available, service_prices, image_url, weekly_schedule
   from public.businesses;
 
 -- Cupos ocupados de los próximos días (para pintar la grilla de horarios).
@@ -151,6 +159,23 @@ create or replace view public.public_taken_slots as
     and date >= current_date - 1;
 
 grant select on public.public_businesses, public.public_taken_slots to anon, authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('business-photos', 'business-photos', true, 5242880, array['image/jpeg','image/png','image/webp'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 5242880,
+      allowed_mime_types = array['image/jpeg','image/png','image/webp'];
+
+drop policy if exists "Business owners manage their profile photos" on storage.objects;
+create policy "Business owners manage their profile photos"
+  on storage.objects for all to authenticated
+  using (bucket_id = 'business-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and exists (select 1 from public.businesses where id = auth.uid()))
+  with check (bucket_id = 'business-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and exists (select 1 from public.businesses where id = auth.uid()));
 
 -- ---------------------------------------------------------------------
 -- 5) FUNCIONES (RPC)
@@ -192,7 +217,11 @@ begin
   if not found then raise exception 'business_not_found'; end if;
   if biz.balance < 0.25 then raise exception 'business_unavailable'; end if;
   if not (p_service = any (biz.services)) then raise exception 'invalid_service'; end if;
-  if not (to_char(p_time, 'HH24:MI') = any (biz.slots)) then raise exception 'invalid_slot'; end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements_text(biz.weekly_schedule -> extract(dow from p_date)::integer::text) as slot(value)
+    where slot.value = to_char(p_time, 'HH24:MI')
+  ) then raise exception 'invalid_slot'; end if;
   if p_date < current_date - 1 or p_date > current_date + 60 then raise exception 'invalid_date'; end if;
   if char_length(trim(p_name)) < 1 or char_length(regexp_replace(p_phone, '[^0-9]', '', 'g')) < 8 then
     raise exception 'invalid_contact';
@@ -207,6 +236,126 @@ begin
   end;
 
   return new_id;
+end;
+$$;
+
+-- 5.3 El negocio actualiza su perfil, catálogo, precios y horarios.
+drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, text);
+
+create or replace function public.update_business_settings(
+  p_name           text,
+  p_owner          text,
+  p_phone          text,
+  p_services       text[],
+  p_slots          text[],
+  p_service_prices jsonb,
+  p_weekly_schedule jsonb,
+  p_image_url      text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  clean_phone text := regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g');
+begin
+  if uid is null then raise exception 'not_authenticated'; end if;
+  if char_length(trim(coalesce(p_name, ''))) not between 1 and 80
+     or char_length(trim(coalesce(p_owner, ''))) not between 1 and 80
+     or char_length(regexp_replace(clean_phone, '[^0-9]', '', 'g')) < 8 then
+    raise exception 'invalid_business_profile';
+  end if;
+  if p_services is null then
+    raise exception 'invalid_business_profile';
+  end if;
+  if cardinality(p_services) not between 1 and 30
+     or exists (select 1 from unnest(p_services) as item(service) where service is null or char_length(trim(service)) not between 1 and 80)
+     or (select count(*) from unnest(p_services)) <> (select count(distinct service) from unnest(p_services) as item(service)) then
+    raise exception 'invalid_business_profile';
+  end if;
+  if p_slots is null then
+    raise exception 'invalid_schedule';
+  end if;
+  if cardinality(p_slots) not between 1 and 336
+     or exists (select 1 from unnest(p_slots) as item(slot) where slot is null or slot !~ '^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$')
+     or (select count(*) from unnest(p_slots)) <> (select count(distinct slot) from unnest(p_slots) as item(slot)) then
+    raise exception 'invalid_schedule';
+  end if;
+  if p_service_prices is null then
+    raise exception 'invalid_service_price';
+  end if;
+  if jsonb_typeof(p_service_prices) is distinct from 'object' then
+    raise exception 'invalid_service_price';
+  end if;
+  if exists (
+    select 1 from jsonb_each(p_service_prices) as price(service, amount)
+    where not (price.service = any (p_services))
+       or jsonb_typeof(price.amount) is distinct from 'number'
+  ) then
+    raise exception 'invalid_service_price';
+  end if;
+  if exists (
+    select 1 from jsonb_each(p_service_prices) as price(service, amount)
+    where (price.amount #>> '{}')::numeric < 0
+  ) then
+    raise exception 'invalid_service_price';
+  end if;
+
+  if p_weekly_schedule is null then
+    raise exception 'invalid_schedule';
+  end if;
+  if jsonb_typeof(p_weekly_schedule) is distinct from 'object' then
+    raise exception 'invalid_schedule';
+  end if;
+  if jsonb_object_length(p_weekly_schedule) <> 7
+     or not (p_weekly_schedule ?& array['0','1','2','3','4','5','6']) then
+    raise exception 'invalid_schedule';
+  end if;
+  if exists (
+    select 1
+    from jsonb_each(p_weekly_schedule) as day(day_key, times)
+    where day.day_key !~ '^[0-6]$'
+       or jsonb_typeof(day.times) is distinct from 'array'
+  ) then
+    raise exception 'invalid_schedule';
+  end if;
+  if exists (
+    select 1
+    from jsonb_each(p_weekly_schedule) as day(day_key, times)
+    where jsonb_array_length(day.times) > 48
+       or exists (
+         select 1 from jsonb_array_elements(day.times) as item(slot)
+         where jsonb_typeof(item.slot) is distinct from 'string'
+            or item.slot #>> '{}' !~ '^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$'
+       )
+       or (select count(*) from jsonb_array_elements_text(day.times))
+          <> (select count(distinct value) from jsonb_array_elements_text(day.times) as item(value))
+  ) then
+    raise exception 'invalid_schedule';
+  end if;
+  if not exists (
+    select 1 from jsonb_each(p_weekly_schedule) as day(day_key, times)
+    where jsonb_array_length(day.times) > 0
+  ) then
+    raise exception 'invalid_schedule';
+  end if;
+  if p_image_url is not null and char_length(p_image_url) > 2048 then
+    raise exception 'invalid_business_profile';
+  end if;
+
+  update public.businesses
+     set name = trim(p_name),
+         owner = trim(p_owner),
+         phone = clean_phone,
+         services = p_services,
+         slots = p_slots,
+         service_prices = p_service_prices,
+         weekly_schedule = p_weekly_schedule,
+         image_url = p_image_url
+   where id = uid;
+  if not found then raise exception 'business_not_found'; end if;
 end;
 $$;
 
@@ -225,11 +374,20 @@ set search_path = public
 as $$
 declare
   uid     uuid := auth.uid();
+  biz     public.businesses%rowtype;
   new_bal numeric(10,2);
   new_id  uuid;
 begin
   if uid is null then raise exception 'not_authenticated'; end if;
-  if not exists (select 1 from public.businesses where id = uid) then raise exception 'business_not_found'; end if;
+  select * into biz from public.businesses where id = uid;
+  if not found then raise exception 'business_not_found'; end if;
+  if not (p_service = any (biz.services)) then raise exception 'invalid_service'; end if;
+  if not exists (
+      select 1
+      from jsonb_array_elements_text(biz.weekly_schedule -> extract(dow from p_date)::integer::text) as slot(value)
+      where slot.value = to_char(p_time, 'HH24:MI')
+    ) then raise exception 'invalid_slot'; end if;
+  if p_date < current_date or p_date > current_date + 60 then raise exception 'invalid_date'; end if;
 
   -- Cobro atómico: solo descuenta si alcanza el saldo.
   update public.businesses
@@ -326,9 +484,11 @@ revoke all on function public.book_appointment(uuid, text, text, text, date, tim
 revoke all on function public.add_manual_appointment(text, text, text, date, time)       from public;
 revoke all on function public.set_appointment_status(uuid, text)                         from public;
 revoke all on function public.recharge_wallet(numeric)                                   from public;
+revoke all on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text) from public, anon, authenticated;
 
 grant execute on function public.phone_available(text)                                   to anon, authenticated;
 grant execute on function public.book_appointment(uuid, text, text, text, date, time)    to anon, authenticated;
 grant execute on function public.add_manual_appointment(text, text, text, date, time)    to authenticated;
 grant execute on function public.set_appointment_status(uuid, text)                      to authenticated;
 grant execute on function public.recharge_wallet(numeric)                                to authenticated;
+grant execute on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text) to authenticated;

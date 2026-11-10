@@ -22,7 +22,7 @@ export default function Explore() {
   const { toast } = useFeedback();
   const { bizId } = useParams(); // /explorar/:bizId
   const navigate = useNavigate();
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('Salón de belleza');
   const [query, setQuery] = useState('');
 
   // Carga los negocios al entrar y los mantiene frescos (cupos nuevos de otros clientes).
@@ -48,8 +48,8 @@ export default function Explore() {
   return (
     <PageTransition>
       <div className="hero-title">
-        <h1>Explora negocios</h1>
-        <p>Elige un negocio, mira los cupos disponibles y reserva sin crear cuenta.</p>
+        <h1>Encuentra tu próximo salón</h1>
+        <p>Descubre servicios de belleza, consulta sus precios y reserva tu horario sin crear cuenta.</p>
       </div>
 
       <div className="search-wrap">

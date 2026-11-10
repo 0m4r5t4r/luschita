@@ -14,6 +14,9 @@ const ERRORS = {
   invalid_slot: 'Ese horario no existe en este negocio.',
   invalid_date: 'La fecha no es válida.',
   invalid_contact: 'Revisa tu nombre y teléfono.',
+  invalid_business_profile: 'Revisa el nombre, el teléfono y los servicios del negocio.',
+  invalid_service_price: 'Los precios deben ser números iguales o mayores que cero.',
+  invalid_schedule: 'Agrega al menos un horario válido y sin duplicados.',
   insufficient_balance: 'No tienes saldo suficiente. Recarga tu monedero.',
   appointment_not_found: 'No se encontró la cita.',
   invalid_amount: 'Monto de recarga inválido.',
@@ -60,7 +63,10 @@ const mapOwnBusiness = (b, appointments) => ({
   phone: b.phone,
   type: b.type,
   services: b.services,
+  servicePrices: b.service_prices || {},
   slots: b.slots,
+  weeklySchedule: b.weekly_schedule,
+  imageUrl: b.image_url,
   wallet: {
     balance: Number(b.balance),
     totalSpent: Number(b.total_spent),
@@ -110,6 +116,50 @@ export const addManualAppointment = (a) =>
 
 export const rechargeWallet = (amount) => attempt(() => supabase.rpc('recharge_wallet', { p_amount: amount }));
 
+const PHOTO_BUCKET = 'business-photos';
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export async function updateBusinessSettings(profile, photoFile, userId) {
+  let imageUrl = profile.imageUrl || null;
+  let uploadedPath = null;
+
+  if (photoFile) {
+    if (!PHOTO_TYPES.has(photoFile.type) || photoFile.size > MAX_PHOTO_SIZE) {
+      return { data: null, error: 'Elige una imagen JPG, PNG o WebP de máximo 5 MB.' };
+    }
+
+    const extension = photoFile.type.split('/')[1].replace('jpeg', 'jpg');
+    uploadedPath = `${userId}/${crypto.randomUUID()}.${extension}`;
+    const upload = await supabase.storage.from(PHOTO_BUCKET).upload(uploadedPath, photoFile, {
+      cacheControl: '3600',
+      contentType: photoFile.type,
+      upsert: false,
+    });
+    if (upload.error) return { data: null, error: friendlyError(upload.error) };
+    imageUrl = `${supabase.storage.from(PHOTO_BUCKET).getPublicUrl(uploadedPath).data.publicUrl}?v=${Date.now()}`;
+  }
+
+  const result = await attempt(() => supabase.rpc('update_business_settings', {
+    p_name: profile.name,
+    p_owner: profile.owner,
+    p_phone: profile.phone,
+    p_services: profile.services,
+    p_slots: profile.slots,
+    p_service_prices: profile.servicePrices,
+    p_weekly_schedule: profile.weeklySchedule,
+    p_image_url: imageUrl,
+  }));
+
+  if (result.error && uploadedPath) {
+    const cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPath]);
+    if (cleanup.error) {
+      return { data: null, error: `${result.error} No se pudo limpiar la imagen cargada: ${friendlyError(cleanup.error)}` };
+    }
+  }
+  return result.error ? result : { ...result, data: { imageUrl } };
+}
+
 // ---------- Datos públicos (clientes sin cuenta) ----------
 export async function fetchPublicBusinesses() {
   try {
@@ -121,6 +171,9 @@ export async function fetchPublicBusinesses() {
     if (taken.error) return { data: null, error: friendlyError(taken.error) };
     const data = biz.data.map((b) => ({
       ...b,
+      servicePrices: b.service_prices || {},
+      imageUrl: b.image_url,
+      weeklySchedule: b.weekly_schedule,
       // Formato compatible con SlotGrid/BusinessCard: cupos ocupados como "citas" mínimas.
       appointments: taken.data
         .filter((t) => t.business_id === b.id)

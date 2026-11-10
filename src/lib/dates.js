@@ -36,11 +36,19 @@ export const normalizePhone = (phone) => (phone || '').replace(/[^\d+]/g, '');
 
 export const pluralCitas = (n) => (n === 1 ? '1 cita' : `${n} citas`);
 
+export function getBusinessSlotsForDate(business, date, defaultSlots = []) {
+  if (business.weeklySchedule) {
+    const weekday = new Date(`${date}T12:00:00`).getDay();
+    return business.weeklySchedule[String(weekday)] || [];
+  }
+  return business.slots || defaultSlots;
+}
+
 // Primer día (de los próximos 7) con al menos un cupo libre y no pasado.
 export function firstAvailableDate(business, defaultSlots = [], days = 7) {
-  const slots = business.slots || defaultSlots;
   for (let i = 0; i < days; i++) {
     const date = getDateStr(i);
+    const slots = getBusinessSlotsForDate(business, date, defaultSlots);
     const taken = new Set(business.appointments.filter((a) => a.date === date && a.status !== 'cancelled').map((a) => a.time));
     if (slots.some((s) => !taken.has(s) && !isPast(date, s))) return date;
   }

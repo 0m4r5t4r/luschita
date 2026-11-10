@@ -131,11 +131,20 @@ export function AppProvider({ children }) {
       return { error };
     },
 
+    async updateBusiness(profile, photoFile) {
+      const { error, data } = await api.updateBusinessSettings(profile, photoFile, userId);
+      if (!error) {
+        await refreshBusiness({ silent: true });
+        await refreshPublic();
+      }
+      return { error, data };
+    },
+
     phoneAvailable: async (phone) => {
       const { data, error } = await api.phoneAvailable(phone);
       return { available: error ? true : data, error }; // si falla la consulta, la BD igual valida el teléfono único
     },
-  }), [refreshBusiness, refreshPublic]);
+  }), [refreshBusiness, refreshPublic, userId]);
 
   const getBusinessById = useCallback((id) => state.businesses.find((b) => b.id === id), [state.businesses]);
 
