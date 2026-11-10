@@ -26,6 +26,12 @@ export default function BusinessCard({ business, selected, index, onSelect }) {
       <div className="bc-info">
         <div className="bc-name">{business.name}</div>
         <div className="bc-type">{business.type}</div>
+        {business.location && <div className="bc-location">📍 {business.location}</div>}
+        <div className="business-rating-summary" aria-label={business.ratingCount > 0 ? `${business.averageRating.toFixed(1)} de 5 estrellas, ${business.ratingCount} valoraciones` : 'Sin valoraciones todavía'}>
+          <span aria-hidden="true">★</span>
+          <strong>{business.ratingCount > 0 ? business.averageRating.toFixed(1) : 'Nuevo'}</strong>
+          {business.ratingCount > 0 ? <small>({business.ratingCount})</small> : <small>Sin votos</small>}
+        </div>
         {active && <div className={`bc-free${slots.length === 0 ? ' closed' : ''}`}><i /> {slots.length === 0 ? 'Cerrado hoy' : `${free} cupo${free !== 1 ? 's' : ''} hoy`}</div>}
       </div>
       {!active && <span className="bc-inactive-tag">no disponible</span>}

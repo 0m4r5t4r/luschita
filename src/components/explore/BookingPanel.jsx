@@ -9,6 +9,7 @@ import { sounds } from '../../lib/sound';
 import Field from '../ui/Field';
 import DateSelector from './DateSelector';
 import SlotGrid from './SlotGrid';
+import BusinessRating from './BusinessRating';
 
 export default function BookingPanel({ business, onBack }) {
   const { actions } = useApp();
@@ -65,7 +66,19 @@ export default function BookingPanel({ business, onBack }) {
         <h1 style={{ fontSize: '1.6rem' }}>{business.name}</h1>
         <span className="public-type">{cfg.icon} {business.type}</span>
         {business.type === 'Salón de belleza' && <span className="salon-caption">Belleza y cuidado personal</span>}
+        {business.location && (
+          <a
+            className="business-location-link"
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.location)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            📍 {business.location} <span>· Ver en el mapa ↗</span>
+          </a>
+        )}
       </div>
+
+      <BusinessRating business={business} />
 
       <div className="booking-steps">
         <Field label="① Servicio" style={{ marginBottom: '1rem' }}>

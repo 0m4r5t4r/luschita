@@ -29,6 +29,7 @@ create table if not exists public.businesses (
   slots           text[]      not null default array['09:00','10:00','11:00','12:00','13:00','16:00','17:00','18:00','19:00'],
   weekly_schedule jsonb       not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb,
   image_url       text,
+  location        text        not null default '',
   balance         numeric(10,2) not null default 5.00 check (balance >= 0),
   total_spent     numeric(10,2) not null default 0,
   total_recharged numeric(10,2) not null default 0,
@@ -39,7 +40,16 @@ create table if not exists public.businesses (
 alter table public.businesses
   add column if not exists service_prices jsonb not null default '{}'::jsonb,
   add column if not exists image_url text,
-  add column if not exists weekly_schedule jsonb not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb;
+  add column if not exists weekly_schedule jsonb not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb,
+  add column if not exists location text not null default '';
+
+create table if not exists public.business_ratings (
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  voter_id    uuid not null,
+  rating      smallint not null check (rating between 1 and 5),
+  updated_at  timestamptz not null default now(),
+  primary key (business_id, voter_id)
+);
 
 create table if not exists public.appointments (
   id          uuid primary key default gen_random_uuid(),
@@ -82,8 +92,10 @@ create index if not exists wallet_transactions_business_idx
 alter table public.businesses          enable row level security;
 alter table public.appointments        enable row level security;
 alter table public.wallet_transactions enable row level security;
+alter table public.business_ratings enable row level security;
 
 revoke all on public.businesses, public.appointments, public.wallet_transactions from anon, authenticated;
+revoke all on public.business_ratings from anon, authenticated;
 grant select on public.businesses, public.appointments, public.wallet_transactions to authenticated;
 
 drop policy if exists "negocio ve su perfil"   on public.businesses;
@@ -93,6 +105,7 @@ drop policy if exists "negocio ve sus movimientos" on public.wallet_transactions
 create policy "negocio ve su perfil"       on public.businesses          for select to authenticated using (id = auth.uid());
 create policy "negocio ve sus citas"       on public.appointments        for select to authenticated using (business_id = auth.uid());
 create policy "negocio ve sus movimientos" on public.wallet_transactions for select to authenticated using (business_id = auth.uid());
+drop policy if exists "No direct access to business ratings" on public.business_ratings;
 
 -- (No hay políticas de INSERT/UPDATE/DELETE: esas operaciones solo ocurren dentro de las funciones de abajo.)
 
@@ -148,8 +161,16 @@ create trigger on_auth_user_created
 
 -- Negocios visibles en "Explorar": sin teléfono, email ni saldo exacto.
 create or replace view public.public_businesses as
-  select id, name, type, services, slots, (balance >= 0.25) as available, service_prices, image_url, weekly_schedule
-  from public.businesses;
+  select b.id, b.name, b.type, b.services, b.slots, (b.balance >= 0.25) as available,
+         b.service_prices, b.image_url, b.weekly_schedule, b.location,
+         coalesce(r.average_rating, 0)::numeric(3,2) as average_rating,
+         coalesce(r.rating_count, 0)::bigint as rating_count
+  from public.businesses b
+  left join (
+    select business_id, avg(rating)::numeric(3,2) as average_rating, count(*) as rating_count
+    from public.business_ratings
+    group by business_id
+  ) r on r.business_id = b.id;
 
 -- Cupos ocupados de los próximos días (para pintar la grilla de horarios).
 create or replace view public.public_taken_slots as
@@ -241,6 +262,7 @@ $$;
 
 -- 5.3 El negocio actualiza su perfil, catálogo, precios y horarios.
 drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, text);
+drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text);
 
 create or replace function public.update_business_settings(
   p_name           text,
@@ -250,6 +272,7 @@ create or replace function public.update_business_settings(
   p_slots          text[],
   p_service_prices jsonb,
   p_weekly_schedule jsonb,
+  p_location       text,
   p_image_url      text
 )
 returns void
@@ -266,6 +289,9 @@ begin
      or char_length(trim(coalesce(p_owner, ''))) not between 1 and 80
      or char_length(regexp_replace(clean_phone, '[^0-9]', '', 'g')) < 8 then
     raise exception 'invalid_business_profile';
+  end if;
+  if char_length(trim(coalesce(p_location, ''))) > 160 then
+    raise exception 'invalid_location';
   end if;
   if p_services is null then
     raise exception 'invalid_business_profile';
@@ -353,9 +379,45 @@ begin
          slots = p_slots,
          service_prices = p_service_prices,
          weekly_schedule = p_weekly_schedule,
+         location = trim(coalesce(p_location, '')),
          image_url = p_image_url
    where id = uid;
   if not found then raise exception 'business_not_found'; end if;
+end;
+$$;
+
+-- Valoración pública: un voto actualizable por visitante (identificador de navegador).
+create or replace function public.rate_business(p_business uuid, p_rating integer, p_voter uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  average_rating numeric(3,2);
+  rating_count bigint;
+begin
+  if p_rating is null or p_rating not between 1 and 5 then raise exception 'invalid_rating'; end if;
+  if p_voter is null or p_business is null then raise exception 'invalid_rating'; end if;
+  if not exists (select 1 from public.businesses where id = p_business) then
+    raise exception 'business_rating_not_found';
+  end if;
+
+  insert into public.business_ratings (business_id, voter_id, rating)
+  values (p_business, p_voter, p_rating)
+  on conflict (business_id, voter_id) do update
+    set rating = excluded.rating, updated_at = now();
+
+  select avg(rating)::numeric(3,2), count(*)
+    into average_rating, rating_count
+    from public.business_ratings
+   where business_id = p_business;
+
+  return jsonb_build_object(
+    'rating', p_rating,
+    'averageRating', average_rating,
+    'ratingCount', rating_count
+  );
 end;
 $$;
 
@@ -484,11 +546,13 @@ revoke all on function public.book_appointment(uuid, text, text, text, date, tim
 revoke all on function public.add_manual_appointment(text, text, text, date, time)       from public;
 revoke all on function public.set_appointment_status(uuid, text)                         from public;
 revoke all on function public.recharge_wallet(numeric)                                   from public;
-revoke all on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text) from public, anon, authenticated;
+revoke all on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text, text) from public, anon, authenticated;
+revoke all on function public.rate_business(uuid, integer, uuid) from public, anon, authenticated;
 
 grant execute on function public.phone_available(text)                                   to anon, authenticated;
 grant execute on function public.book_appointment(uuid, text, text, text, date, time)    to anon, authenticated;
 grant execute on function public.add_manual_appointment(text, text, text, date, time)    to authenticated;
 grant execute on function public.set_appointment_status(uuid, text)                      to authenticated;
 grant execute on function public.recharge_wallet(numeric)                                to authenticated;
-grant execute on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text) to authenticated;
+grant execute on function public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text, text) to authenticated;
+grant execute on function public.rate_business(uuid, integer, uuid) to anon, authenticated;

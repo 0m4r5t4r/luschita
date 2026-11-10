@@ -140,6 +140,12 @@ export function AppProvider({ children }) {
       return { error, data };
     },
 
+    async rateBusiness(businessId, rating, voterId) {
+      const { data, error } = await api.submitBusinessRating(businessId, rating, voterId);
+      if (!error) await refreshPublic();
+      return { data, error };
+    },
+
     phoneAvailable: async (phone) => {
       const { data, error } = await api.phoneAvailable(phone);
       return { available: error ? true : data, error }; // si falla la consulta, la BD igual valida el teléfono único

@@ -38,6 +38,7 @@ export default function BusinessManager({ business }) {
     name: business.name,
     owner: business.owner,
     phone: business.phone,
+    location: business.location || '',
     imageUrl: business.imageUrl || null,
   });
   const [services, setServices] = useState(() => toServiceRows(business));
@@ -197,6 +198,17 @@ export default function BusinessManager({ business }) {
               <label className="input-group">
                 <span>Teléfono de contacto</span>
                 <input className="glass-input" type="tel" required value={profile.phone} onChange={(e) => setProfile((current) => ({ ...current, phone: e.target.value }))} />
+              </label>
+              <label className="input-group manager-location-field">
+                <span>Ciudad, colonia o zona</span>
+                <input
+                  className="glass-input"
+                  maxLength={160}
+                  placeholder="Ej. Colonia Escalón, San Salvador"
+                  value={profile.location}
+                  onChange={(e) => setProfile((current) => ({ ...current, location: e.target.value }))}
+                />
+                <small>Esta ubicación aparecerá en Explorar para que tus clientes te encuentren.</small>
               </label>
               <div className="manager-type-note">
                 <span>Especialidad</span>

@@ -17,6 +17,12 @@ const FILTERS = [
   ...Object.entries(BUSINESS_TYPES).filter(([t]) => t !== 'Otro negocio').map(([value, c]) => ({ value, label: c.short })),
 ];
 
+const normalizeSearch = (value) => value
+  .toLocaleLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
+
 export default function Explore() {
   const { businesses, publicLoading, publicError, getBusinessById, actions } = useApp();
   const { toast } = useFeedback();
@@ -24,6 +30,7 @@ export default function Explore() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState('Salón de belleza');
   const [query, setQuery] = useState('');
+  const [locationQuery, setLocationQuery] = useState('');
 
   // Carga los negocios al entrar y los mantiene frescos (cupos nuevos de otros clientes).
   useEffect(() => {
@@ -33,9 +40,16 @@ export default function Explore() {
   }, [actions.refreshPublic]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return businesses.filter((b) => (filter === 'all' || b.type === filter) && (!q || b.name.toLowerCase().includes(q) || b.type.toLowerCase().includes(q)));
-  }, [businesses, filter, query]);
+    const q = normalizeSearch(query);
+    const location = normalizeSearch(locationQuery);
+    return businesses.filter((b) => {
+      const searchableText = normalizeSearch([b.name, b.type, ...(b.services || []), b.location].join(' '));
+      const businessLocation = normalizeSearch(b.location || '');
+      return (filter === 'all' || b.type === filter)
+        && (!q || searchableText.includes(q))
+        && (!location || businessLocation.includes(location));
+    });
+  }, [businesses, filter, locationQuery, query]);
 
   const selected = bizId ? getBusinessById(bizId) : null;
 
@@ -54,7 +68,20 @@ export default function Explore() {
 
       <div className="search-wrap">
         <span className="search-icon">🔍</span>
-        <input className="glass-input search-input" placeholder="Buscar por nombre o categoría…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Buscar negocios" />
+        <input className="glass-input search-input" placeholder="Buscar por nombre, servicio o zona…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Buscar negocios por nombre, servicio o zona" />
+      </div>
+      <div className="search-wrap location-search-wrap">
+        <span className="search-icon" aria-hidden="true">📍</span>
+        <input
+          className="glass-input search-input"
+          placeholder="Filtrar por ciudad, colonia o zona…"
+          value={locationQuery}
+          onChange={(e) => setLocationQuery(e.target.value)}
+          aria-label="Filtrar negocios por ubicación"
+        />
+        {locationQuery && (
+          <button type="button" className="clear-location-search" onClick={() => setLocationQuery('')} aria-label="Limpiar filtro de ubicación">×</button>
+        )}
       </div>
 
       <FilterChips options={FILTERS} value={filter} onChange={setFilter} />

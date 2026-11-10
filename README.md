@@ -7,7 +7,7 @@ Proyecto de la materia de Frameworks. Migración de la versión HTML/JS a **Reac
 
 **1. Base de datos.** En Supabase → *SQL Editor* → *New query*, pega TODO el contenido de
 `supabase/schema.sql` y pulsa **Run**. Si ya configuraste una versión anterior, vuelve a ejecutar el script para
-agregar precios, foto del negocio, permisos de almacenamiento y la función de edición del perfil.
+agregar precios, foto del negocio, ubicación, valoraciones, permisos de almacenamiento y las funciones de edición.
 
 **2. (Recomendado para la demo) Desactiva la confirmación por correo.**
 *Authentication → Sign In / Providers → Email → desactiva "Confirm email"*. Si la dejas activa, todo funciona,
@@ -28,6 +28,7 @@ npm run build     # build de producción en /dist
 | `businesses` | Un negocio por usuario de Auth (`id = auth.users.id`), con su saldo, servicios, precios, horarios e imagen |
 | `appointments` | Citas; índice único = un cupo no se puede reservar dos veces |
 | `wallet_transactions` | Historial del monedero (bono, cobros, recargas) |
+| `business_ratings` | Votos de visitantes; se publica solo el promedio y el total |
 | `public_businesses` / `public_taken_slots` | Vistas públicas para "Explorar" (sin teléfono, email ni saldo) |
 
 - **Seguridad (RLS):** cada negocio solo lee lo suyo. El navegador **no puede** modificar saldos ni citas con
@@ -35,6 +36,8 @@ npm run build     # build de producción en /dist
   `add_manual_appointment`, `recharge_wallet`), que validan y cobran de forma atómica.
 - **Registro:** `supabase.auth.signUp` + trigger `handle_new_user` crea el negocio y el bono de 5 USD.
 - **Administración:** el panel permite editar el perfil del salón, subir su imagen, gestionar servicios y precios, y definir días de trabajo y horarios específicos para cada día de la semana.
+- **Ubicación:** el perfil acepta ciudad, colonia o zona; Explorar permite filtrar por ubicación y el perfil público ofrece abrirla en Google Maps.
+- **Valoraciones:** visitantes pueden votar de 1 a 5 estrellas sin iniciar sesión; el voto se puede actualizar desde el mismo navegador.
 - **Fotos:** se guardan en el bucket público `business-photos`; las políticas solo permiten a cada negocio administrar sus propios archivos.
 - **Reservas:** los clientes ven el catálogo y los precios públicos del salón. Los cambios de horario aplican a nuevas reservas; las citas existentes se conservan.
 - **Login real:** Supabase Auth (contraseñas cifradas, sesión persistente).

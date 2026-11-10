@@ -17,6 +17,9 @@ const ERRORS = {
   invalid_business_profile: 'Revisa el nombre, el teléfono y los servicios del negocio.',
   invalid_service_price: 'Los precios deben ser números iguales o mayores que cero.',
   invalid_schedule: 'Agrega al menos un horario válido y sin duplicados.',
+  invalid_location: 'La ubicación debe tener máximo 160 caracteres.',
+  invalid_rating: 'Selecciona una valoración de 1 a 5 estrellas.',
+  business_rating_not_found: 'No se encontró la valoración para este negocio.',
   insufficient_balance: 'No tienes saldo suficiente. Recarga tu monedero.',
   appointment_not_found: 'No se encontró la cita.',
   invalid_amount: 'Monto de recarga inválido.',
@@ -67,6 +70,7 @@ const mapOwnBusiness = (b, appointments) => ({
   slots: b.slots,
   weeklySchedule: b.weekly_schedule,
   imageUrl: b.image_url,
+  location: b.location || '',
   wallet: {
     balance: Number(b.balance),
     totalSpent: Number(b.total_spent),
@@ -148,17 +152,30 @@ export async function updateBusinessSettings(profile, photoFile, userId) {
     p_slots: profile.slots,
     p_service_prices: profile.servicePrices,
     p_weekly_schedule: profile.weeklySchedule,
+    p_location: profile.location,
     p_image_url: imageUrl,
   }));
 
   if (result.error && uploadedPath) {
-    const cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPath]);
+    let cleanup;
+    try {
+      cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPath]);
+    } catch (error) {
+      return { data: null, error: `${result.error} No se pudo limpiar la imagen cargada: ${friendlyError(error)}` };
+    }
     if (cleanup.error) {
       return { data: null, error: `${result.error} No se pudo limpiar la imagen cargada: ${friendlyError(cleanup.error)}` };
     }
   }
   return result.error ? result : { ...result, data: { imageUrl } };
 }
+
+export const submitBusinessRating = (businessId, rating, voterId) =>
+  attempt(() => supabase.rpc('rate_business', {
+    p_business: businessId,
+    p_rating: rating,
+    p_voter: voterId,
+  }));
 
 // ---------- Datos públicos (clientes sin cuenta) ----------
 export async function fetchPublicBusinesses() {
@@ -174,6 +191,9 @@ export async function fetchPublicBusinesses() {
       servicePrices: b.service_prices || {},
       imageUrl: b.image_url,
       weeklySchedule: b.weekly_schedule,
+      location: b.location || '',
+      averageRating: Number(b.average_rating || 0),
+      ratingCount: Number(b.rating_count || 0),
       // Formato compatible con SlotGrid/BusinessCard: cupos ocupados como "citas" mínimas.
       appointments: taken.data
         .filter((t) => t.business_id === b.id)
