@@ -88,7 +88,9 @@
       position: relative; z-index: 2;
     }
 
-    .logo { display: flex; align-items: center; gap: 0.8rem; cursor: pointer; }
+    .logo { display: flex; align-items: center; width: 96px; height: 96px; flex: 0 0 auto; cursor: pointer; }
+
+    .logo-image { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 14px rgba(130, 80, 105, 0.18)); transition: transform 0.3s ease, filter 0.3s ease; }
 
     .logo-icon {
       width: 52px; height: 52px;
@@ -879,8 +881,7 @@
       .appointment-info { gap: 0.6rem 1rem; width: 100%; }
       .appointment-actions { width: 100%; }
       .header { flex-direction: column; align-items: flex-start; }
-      .logo-text { font-size: 1.4rem; }
-      .logo-icon { width: 44px; height: 44px; }
+      .logo { width: 78px; height: 78px; }
       .badge { font-size: 0.72rem; padding: 0.45rem 1rem; }
       .form-grid { grid-template-columns: 1fr; }
       .stats-row { grid-template-columns: repeat(2, 1fr); }

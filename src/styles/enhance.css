@@ -141,8 +141,8 @@ button:focus-visible, [role="button"]:focus-visible, [role="radio"]:focus-visibl
 .sound-toggle:hover { transform: translateY(-2px) rotate(-8deg); background: rgba(255, 255, 255, 0.65); }
 .sound-toggle.off { opacity: 0.6; }
 
-/* El logo conserva su animación; el texto gana un destello al pasar el mouse */
-.logo:hover .logo-icon { filter: drop-shadow(0 0 14px rgba(230, 170, 230, 0.8)); }
+/* Realza suavemente la imagen de marca al pasar el cursor. */
+.logo:hover .logo-image { transform: translateY(-2px) scale(1.03); filter: drop-shadow(0 10px 16px rgba(160, 95, 125, 0.3)); }
 
 /* =====================================================================
    LANDING

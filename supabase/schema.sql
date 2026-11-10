@@ -309,7 +309,7 @@ begin
   if jsonb_typeof(p_weekly_schedule) is distinct from 'object' then
     raise exception 'invalid_schedule';
   end if;
-  if jsonb_object_length(p_weekly_schedule) <> 7
+  if (select count(*) from jsonb_each(p_weekly_schedule)) <> 7
      or not (p_weekly_schedule ?& array['0','1','2','3','4','5','6']) then
     raise exception 'invalid_schedule';
   end if;
