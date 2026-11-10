@@ -131,13 +131,13 @@ export function AppProvider({ children }) {
       return { error };
     },
 
-    async updateBusiness(profile, photoFile) {
-      const { error, data } = await api.updateBusinessSettings(profile, photoFile, userId);
+    async updateBusiness(profile, photoFile, audioFile) {
+      const { error, data, warning } = await api.updateBusinessSettings(profile, photoFile, audioFile, userId);
       if (!error) {
         await refreshBusiness({ silent: true });
         await refreshPublic();
       }
-      return { error, data };
+      return { error, data, warning };
     },
 
     async rateBusiness(businessId, rating, voterId) {

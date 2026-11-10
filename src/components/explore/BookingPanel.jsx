@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DEFAULT_SLOTS, getBusinessConfig } from '../../data/constants';
 import { canAfford } from '../../lib/wallet';
@@ -10,7 +10,7 @@ import Field from '../ui/Field';
 import DateSelector from './DateSelector';
 import SlotGrid from './SlotGrid';
 import BusinessRating from './BusinessRating';
-import { getYouTubeVideoId } from '../../lib/youtube';
+import BusinessAudioPlayer from '../ui/BusinessAudioPlayer';
 
 export default function BookingPanel({ business, onBack }) {
   const { actions } = useApp();
@@ -24,10 +24,8 @@ export default function BookingPanel({ business, onBack }) {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [musicPlaying, setMusicPlaying] = useState(false);
   const available = canAfford(business);
   const servicePrice = service ? business.servicePrices?.[service] : null;
-  const musicVideoId = useMemo(() => getYouTubeVideoId(business.youtubeUrl), [business.youtubeUrl]);
 
   // Al abrir un negocio nuevo: reinicia el formulario y desplaza la vista.
   useEffect(() => {
@@ -83,33 +81,15 @@ export default function BookingPanel({ business, onBack }) {
 
       <BusinessRating business={business} />
 
-      {musicVideoId && (
+      {business.audioUrl && (
         <section className="business-music" aria-label={`Música de ${business.name}`}>
           <div className="business-music-heading">
             <div>
-              <strong>Un poco del ambiente del salón</strong>
-              <span>Música seleccionada por el negocio</span>
+              <strong>Música del salón</strong>
+              <span>Escucha la selección de {business.name}</span>
             </div>
-            <button
-              type="button"
-              className="btn-secondary business-music-toggle"
-              aria-expanded={musicPlaying}
-              onClick={() => setMusicPlaying((playing) => !playing)}
-            >
-              {musicPlaying ? 'Detener música' : '▶ Reproducir'}
-            </button>
           </div>
-          {musicPlaying && (
-            <div className="business-music-player">
-              <iframe
-                src={`https://www.youtube-nocookie.com/embed/${musicVideoId}?autoplay=1&rel=0`}
-                title={`Música de ${business.name} en YouTube`}
-                allow="autoplay; encrypted-media; picture-in-picture"
-                referrerPolicy="strict-origin-when-cross-origin"
-                allowFullScreen
-              />
-            </div>
-          )}
+          <BusinessAudioPlayer src={business.audioUrl} label={`Música de ${business.name}`} className="business-audio-player" />
         </section>
       )}
 

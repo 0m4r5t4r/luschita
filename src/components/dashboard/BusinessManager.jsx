@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_SLOTS } from '../../data/constants';
-import { getYouTubeVideoId } from '../../lib/youtube';
 import { useApp } from '../../context/AppContext';
 import { useFeedback } from '../../context/FeedbackContext';
+import BusinessAudioPlayer from '../ui/BusinessAudioPlayer';
 
 const TABS = [
   { id: 'profile', label: 'Perfil del salón', icon: '✦' },
@@ -40,7 +40,7 @@ export default function BusinessManager({ business }) {
     owner: business.owner,
     phone: business.phone,
     location: business.location || '',
-    youtubeUrl: business.youtubeUrl || '',
+    audioUrl: business.audioUrl || '',
     imageUrl: business.imageUrl || null,
   });
   const [services, setServices] = useState(() => toServiceRows(business));
@@ -50,6 +50,9 @@ export default function BusinessManager({ business }) {
   const [newSlots, setNewSlots] = useState({});
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [audioFile, setAudioFile] = useState(null);
+  const [audioPreview, setAudioPreview] = useState(null);
+  const [audioRemoved, setAudioRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -62,6 +65,16 @@ export default function BusinessManager({ business }) {
     return () => URL.revokeObjectURL(url);
   }, [photo]);
 
+  useEffect(() => {
+    if (!audioFile) {
+      setAudioPreview(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(audioFile);
+    setAudioPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [audioFile]);
+
   const servicePrices = useMemo(() => Object.fromEntries(
     services.filter((service) => service.price.trim() !== '').map((service) => [service.name.trim(), Number(service.price)]),
   ), [services]);
@@ -69,10 +82,6 @@ export default function BusinessManager({ business }) {
 
   const save = async (event) => {
     event.preventDefault();
-    const youtubeUrl = profile.youtubeUrl.trim();
-    if (youtubeUrl && !getYouTubeVideoId(youtubeUrl)) {
-      return toast('Ingresa un enlace válido de un video de YouTube.', { type: 'error' });
-    }
     if (services.some((service) => !service.name.trim() || (service.price !== '' && (!Number.isFinite(Number(service.price)) || Number(service.price) < 0)))) {
       return toast('Revisa los nombres de servicios y sus precios.', { type: 'error' });
     }
@@ -81,19 +90,27 @@ export default function BusinessManager({ business }) {
     }
 
     setBusy(true);
-    const { error, data } = await actions.updateBusiness({
+    const { error, data, warning } = await actions.updateBusiness({
       ...profile,
-      youtubeUrl,
+      audioUrl: audioRemoved ? null : profile.audioUrl,
+      previousAudioUrl: profile.audioUrl,
       services: services.map((service) => service.name.trim()),
       servicePrices,
       slots,
       weeklySchedule,
-    }, photo);
+    }, photo, audioFile);
     setBusy(false);
     if (error) return toast(error, { type: 'error' });
     setPhoto(null);
-    setProfile((current) => ({ ...current, imageUrl: data?.imageUrl ?? current.imageUrl }));
+    setAudioFile(null);
+    setAudioRemoved(false);
+    setProfile((current) => ({
+      ...current,
+      imageUrl: data && 'imageUrl' in data ? data.imageUrl : current.imageUrl,
+      audioUrl: data && 'audioUrl' in data ? data.audioUrl : current.audioUrl,
+    }));
     toast('Los cambios del salón se guardaron correctamente.', { type: 'success' });
+    if (warning) toast(warning, { type: 'error' });
   };
 
   const addService = () => {
@@ -217,19 +234,49 @@ export default function BusinessManager({ business }) {
                 />
                 <small>Esta ubicación aparecerá en Explorar para que tus clientes te encuentren.</small>
               </label>
-              <label className="input-group manager-location-field">
-                <span>Música para tu salón (YouTube)</span>
-                <input
-                  className="glass-input"
-                  type="url"
-                  maxLength={2048}
-                  inputMode="url"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={profile.youtubeUrl}
-                  onChange={(e) => setProfile((current) => ({ ...current, youtubeUrl: e.target.value }))}
+              <div className="manager-audio-field">
+                <div className="manager-section-copy">
+                  <h3>Música para tu salón</h3>
+                  <p>Sube una pista de audio para que tú y tus clientes puedan escucharla sin video.</p>
+                </div>
+                <label className="btn-secondary photo-upload">
+                  {audioFile ? 'Cambiar audio' : 'Elegir archivo de audio'}
+                  <input
+                    type="file"
+                    accept=".mp3,.m4a,.aac,.ogg,.wav,.webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/x-wav,audio/webm"
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0] || null;
+                      const allowedTypes = ['audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/x-aac', 'audio/ogg', 'audio/wave', 'audio/vnd.wave', 'audio/wav', 'audio/x-wav', 'audio/webm'];
+                      if (selected && (selected.size > 10 * 1024 * 1024 || !allowedTypes.includes(selected.type))) {
+                        toast('Elige un audio MP3, M4A, AAC, OGG, WAV o WebM de máximo 10 MB.', { type: 'error' });
+                        event.target.value = '';
+                        return;
+                      }
+                      setAudioFile(selected);
+                      setAudioRemoved(false);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+                <small className="manager-audio-help">MP3, M4A, AAC, OGG, WAV o WebM · máximo 10 MB</small>
+                <BusinessAudioPlayer
+                  src={audioPreview || (audioRemoved ? null : profile.audioUrl)}
+                  label={`Vista previa de música de ${profile.name}`}
+                  className="manager-audio-player"
                 />
-                <small>Agrega un video o canción. Tus clientes podrán iniciar y detener la reproducción desde tu perfil.</small>
-              </label>
+                {(audioFile || profile.audioUrl) && (
+                  <button
+                    type="button"
+                    className="manager-text-button"
+                    onClick={() => {
+                      setAudioFile(null);
+                      setAudioRemoved(true);
+                    }}
+                  >
+                    Quitar música
+                  </button>
+                )}
+              </div>
               <div className="manager-type-note">
                 <span>Especialidad</span>
                 <strong>💇‍♀️ {business.type}</strong>

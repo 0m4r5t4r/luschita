@@ -30,7 +30,7 @@ create table if not exists public.businesses (
   weekly_schedule jsonb       not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb,
   image_url       text,
   location        text        not null default '',
-  youtube_url     text,
+  audio_url       text,
   balance         numeric(10,2) not null default 5.00 check (balance >= 0),
   total_spent     numeric(10,2) not null default 0,
   total_recharged numeric(10,2) not null default 0,
@@ -43,7 +43,7 @@ alter table public.businesses
   add column if not exists image_url text,
   add column if not exists weekly_schedule jsonb not null default '{"0":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"1":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"2":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"3":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"4":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"5":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"],"6":["09:00","10:00","11:00","12:00","13:00","16:00","17:00","18:00","19:00"]}'::jsonb,
   add column if not exists location text not null default '',
-  add column if not exists youtube_url text;
+  add column if not exists audio_url text;
 
 create table if not exists public.business_ratings (
   business_id uuid not null references public.businesses (id) on delete cascade,
@@ -162,12 +162,26 @@ create trigger on_auth_user_created
 -- ---------------------------------------------------------------------
 
 -- Negocios visibles en "Explorar": sin teléfono, email ni saldo exacto.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'public_businesses' and column_name = 'youtube_url'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'public_businesses' and column_name = 'audio_url'
+  ) then
+    alter view public.public_businesses rename column youtube_url to audio_url;
+  end if;
+end;
+$$;
+
 create or replace view public.public_businesses as
   select b.id, b.name, b.type, b.services, b.slots, (b.balance >= 0.25) as available,
          b.service_prices, b.image_url, b.weekly_schedule, b.location,
          coalesce(r.average_rating, 0)::numeric(3,2) as average_rating,
          coalesce(r.rating_count, 0)::bigint as rating_count,
-         b.youtube_url
+         b.audio_url
   from public.businesses b
   left join (
     select business_id, avg(rating)::numeric(3,2) as average_rating, count(*) as rating_count
@@ -191,6 +205,13 @@ on conflict (id) do update
       file_size_limit = 5242880,
       allowed_mime_types = array['image/jpeg','image/png','image/webp'];
 
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('business-audio', 'business-audio', true, 10485760, array['audio/mpeg','audio/mp4','audio/x-m4a','audio/aac','audio/x-aac','audio/ogg','audio/wave','audio/vnd.wave','audio/wav','audio/x-wav','audio/webm'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 10485760,
+      allowed_mime_types = array['audio/mpeg','audio/mp4','audio/x-m4a','audio/aac','audio/x-aac','audio/ogg','audio/wave','audio/vnd.wave','audio/wav','audio/x-wav','audio/webm'];
+
 drop policy if exists "Business owners manage their profile photos" on storage.objects;
 create policy "Business owners manage their profile photos"
   on storage.objects for all to authenticated
@@ -198,6 +219,16 @@ create policy "Business owners manage their profile photos"
     and (storage.foldername(name))[1] = auth.uid()::text
     and exists (select 1 from public.businesses where id = auth.uid()))
   with check (bucket_id = 'business-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and exists (select 1 from public.businesses where id = auth.uid()));
+
+drop policy if exists "Business owners manage their profile audio" on storage.objects;
+create policy "Business owners manage their profile audio"
+  on storage.objects for all to authenticated
+  using (bucket_id = 'business-audio'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and exists (select 1 from public.businesses where id = auth.uid()))
+  with check (bucket_id = 'business-audio'
     and (storage.foldername(name))[1] = auth.uid()::text
     and exists (select 1 from public.businesses where id = auth.uid()));
 
@@ -267,6 +298,7 @@ $$;
 drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, text);
 drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text);
 drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text, text);
+drop function if exists public.update_business_settings(text, text, text, text[], text[], jsonb, jsonb, text, text, text);
 
 create or replace function public.update_business_settings(
   p_name           text,
@@ -278,7 +310,7 @@ create or replace function public.update_business_settings(
   p_weekly_schedule jsonb,
   p_location       text,
   p_image_url      text,
-  p_youtube_url    text
+  p_audio_url      text
 )
 returns void
 language plpgsql
@@ -375,7 +407,7 @@ begin
   if p_image_url is not null and char_length(p_image_url) > 2048 then
     raise exception 'invalid_business_profile';
   end if;
-  if p_youtube_url is not null and char_length(trim(p_youtube_url)) > 2048 then
+  if p_audio_url is not null and char_length(trim(p_audio_url)) > 2048 then
     raise exception 'invalid_business_profile';
   end if;
 
@@ -389,7 +421,7 @@ begin
          weekly_schedule = p_weekly_schedule,
          location = trim(coalesce(p_location, '')),
          image_url = p_image_url,
-         youtube_url = nullif(trim(coalesce(p_youtube_url, '')), '')
+         audio_url = nullif(trim(coalesce(p_audio_url, '')), '')
    where id = uid;
   if not found then raise exception 'business_not_found'; end if;
 end;

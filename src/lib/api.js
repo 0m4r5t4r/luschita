@@ -71,7 +71,7 @@ const mapOwnBusiness = (b, appointments) => ({
   weeklySchedule: b.weekly_schedule,
   imageUrl: b.image_url,
   location: b.location || '',
-  youtubeUrl: b.youtube_url || '',
+  audioUrl: b.audio_url || '',
   wallet: {
     balance: Number(b.balance),
     totalSpent: Number(b.total_spent),
@@ -124,10 +124,42 @@ export const rechargeWallet = (amount) => attempt(() => supabase.rpc('recharge_w
 const PHOTO_BUCKET = 'business-photos';
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const AUDIO_BUCKET = 'business-audio';
+const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
+const AUDIO_EXTENSIONS = new Map([
+  ['audio/mpeg', 'mp3'],
+  ['audio/mp4', 'm4a'],
+  ['audio/x-m4a', 'm4a'],
+  ['audio/aac', 'aac'],
+  ['audio/x-aac', 'aac'],
+  ['audio/ogg', 'ogg'],
+  ['audio/wave', 'wav'],
+  ['audio/vnd.wave', 'wav'],
+  ['audio/wav', 'wav'],
+  ['audio/x-wav', 'wav'],
+  ['audio/webm', 'webm'],
+]);
 
-export async function updateBusinessSettings(profile, photoFile, userId) {
+const getOwnedStoragePath = (bucket, url, userId) => {
+  if (!url) return null;
+  try {
+    const path = new URL(url).pathname.split(`/storage/v1/object/public/${bucket}/`)[1];
+    return path?.startsWith(`${userId}/`) ? path : null;
+  } catch {
+    return null;
+  }
+};
+
+export async function updateBusinessSettings(profile, photoFile, audioFile, userId) {
   let imageUrl = profile.imageUrl || null;
-  let uploadedPath = null;
+  const previousAudioUrl = profile.previousAudioUrl || profile.audioUrl || null;
+  let audioUrl = profile.audioUrl || null;
+  let uploadedPhotoPath = null;
+  let uploadedAudioPath = null;
+
+  if (audioFile && (!AUDIO_EXTENSIONS.has(audioFile.type) || audioFile.size > MAX_AUDIO_SIZE)) {
+    return { data: null, error: 'Elige un audio MP3, M4A, AAC, OGG, WAV o WebM de máximo 10 MB.' };
+  }
 
   if (photoFile) {
     if (!PHOTO_TYPES.has(photoFile.type) || photoFile.size > MAX_PHOTO_SIZE) {
@@ -135,14 +167,39 @@ export async function updateBusinessSettings(profile, photoFile, userId) {
     }
 
     const extension = photoFile.type.split('/')[1].replace('jpeg', 'jpg');
-    uploadedPath = `${userId}/${crypto.randomUUID()}.${extension}`;
-    const upload = await supabase.storage.from(PHOTO_BUCKET).upload(uploadedPath, photoFile, {
+    uploadedPhotoPath = `${userId}/${crypto.randomUUID()}.${extension}`;
+    const upload = await supabase.storage.from(PHOTO_BUCKET).upload(uploadedPhotoPath, photoFile, {
       cacheControl: '3600',
       contentType: photoFile.type,
       upsert: false,
     });
     if (upload.error) return { data: null, error: friendlyError(upload.error) };
-    imageUrl = `${supabase.storage.from(PHOTO_BUCKET).getPublicUrl(uploadedPath).data.publicUrl}?v=${Date.now()}`;
+    imageUrl = `${supabase.storage.from(PHOTO_BUCKET).getPublicUrl(uploadedPhotoPath).data.publicUrl}?v=${Date.now()}`;
+  }
+
+  if (audioFile) {
+    const extension = AUDIO_EXTENSIONS.get(audioFile.type);
+    uploadedAudioPath = `${userId}/${crypto.randomUUID()}.${extension}`;
+    const upload = await supabase.storage.from(AUDIO_BUCKET).upload(uploadedAudioPath, audioFile, {
+      cacheControl: '3600',
+      contentType: audioFile.type,
+      upsert: false,
+    });
+    if (upload.error) {
+      let cleanupError = null;
+      if (uploadedPhotoPath) {
+        const cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPhotoPath]);
+        cleanupError = cleanup.error;
+      }
+      const error = friendlyError(upload.error);
+      return {
+        data: null,
+        error: cleanupError
+          ? `${error} No se pudo limpiar la imagen cargada: ${friendlyError(cleanupError)}`
+          : error,
+      };
+    }
+    audioUrl = `${supabase.storage.from(AUDIO_BUCKET).getPublicUrl(uploadedAudioPath).data.publicUrl}?v=${Date.now()}`;
   }
 
   const result = await attempt(() => supabase.rpc('update_business_settings', {
@@ -155,21 +212,33 @@ export async function updateBusinessSettings(profile, photoFile, userId) {
     p_weekly_schedule: profile.weeklySchedule,
     p_location: profile.location,
     p_image_url: imageUrl,
-    p_youtube_url: profile.youtubeUrl || null,
+    p_audio_url: audioUrl,
   }));
 
-  if (result.error && uploadedPath) {
-    let cleanup;
-    try {
-      cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPath]);
-    } catch (error) {
-      return { data: null, error: `${result.error} No se pudo limpiar la imagen cargada: ${friendlyError(error)}` };
+  if (result.error) {
+    const cleanupErrors = [];
+    if (uploadedPhotoPath) {
+      const cleanup = await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPhotoPath]);
+      if (cleanup.error) cleanupErrors.push(`No se pudo limpiar la imagen cargada: ${friendlyError(cleanup.error)}`);
     }
-    if (cleanup.error) {
-      return { data: null, error: `${result.error} No se pudo limpiar la imagen cargada: ${friendlyError(cleanup.error)}` };
+    if (uploadedAudioPath) {
+      const cleanup = await supabase.storage.from(AUDIO_BUCKET).remove([uploadedAudioPath]);
+      if (cleanup.error) cleanupErrors.push(`No se pudo limpiar el audio cargado: ${friendlyError(cleanup.error)}`);
     }
+    return { data: null, error: [result.error, ...cleanupErrors].join(' ') };
   }
-  return result.error ? result : { ...result, data: { imageUrl } };
+
+  const warningMessages = [];
+  const oldAudioPath = getOwnedStoragePath(AUDIO_BUCKET, previousAudioUrl, userId);
+  if (oldAudioPath && oldAudioPath !== uploadedAudioPath && audioUrl !== previousAudioUrl) {
+    const cleanup = await supabase.storage.from(AUDIO_BUCKET).remove([oldAudioPath]);
+    if (cleanup.error) warningMessages.push(`No se pudo eliminar el audio anterior: ${friendlyError(cleanup.error)}`);
+  }
+  return {
+    ...result,
+    data: { imageUrl, audioUrl },
+    warning: warningMessages.join(' ') || null,
+  };
 }
 
 export const submitBusinessRating = (businessId, rating, voterId) =>
@@ -194,7 +263,7 @@ export async function fetchPublicBusinesses() {
       imageUrl: b.image_url,
       weeklySchedule: b.weekly_schedule,
       location: b.location || '',
-      youtubeUrl: b.youtube_url || '',
+      audioUrl: b.audio_url || '',
       averageRating: Number(b.average_rating || 0),
       ratingCount: Number(b.rating_count || 0),
       // Formato compatible con SlotGrid/BusinessCard: cupos ocupados como "citas" mínimas.

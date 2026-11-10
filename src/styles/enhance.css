@@ -328,13 +328,17 @@ button:focus-visible, [role="button"]:focus-visible, [role="radio"]:focus-visibl
 .business-location-link:hover { color: #a45d82; text-decoration: underline; }
 .business-location-link span { color: #9c7d90; font-size: 0.75rem; font-weight: 600; }
 .business-music { margin: 0.8rem 0 1.3rem; padding: 0.9rem 1rem; border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 22px; background: linear-gradient(120deg, rgba(255, 247, 225, 0.5), rgba(255, 238, 248, 0.56), rgba(240, 238, 255, 0.5)); }
-.business-music-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.business-music-heading { display: flex; align-items: center; gap: 0.75rem; }
 .business-music-heading > div { display: grid; gap: 0.18rem; }
 .business-music-heading strong { color: #594452; font-size: 0.84rem; }
 .business-music-heading span { color: #8a7585; font-size: 0.7rem; }
-.business-music-toggle { flex: 0 0 auto; margin: 0; padding: 0.6rem 0.85rem; font-size: 0.75rem; }
-.business-music-player { width: min(100%, 560px); aspect-ratio: 16 / 9; margin: 0.85rem auto 0; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 16px; background: #241d22; box-shadow: 0 10px 24px -16px rgba(80, 50, 70, 0.65); }
-.business-music-player iframe { display: block; width: 100%; height: 100%; border: 0; }
+.business-audio-player { display: block; width: 100%; min-width: 0; height: 42px; margin-top: 0.7rem; }
+.manager-audio-field { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem 0.8rem; grid-column: 1 / -1; min-width: 0; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.75); border-radius: 20px; background: rgba(255, 255, 255, 0.28); }
+.manager-audio-field .manager-section-copy { width: 100%; margin-bottom: 0; }
+.manager-audio-field .manager-section-copy h3 { margin-bottom: 0.25rem; color: #564553; font-size: 0.95rem; }
+.manager-audio-field .manager-section-copy p, .manager-audio-help { color: #81717e; font-size: 0.75rem; line-height: 1.45; }
+.manager-audio-field .photo-upload { min-height: 40px; }
+.manager-audio-field .manager-audio-player { flex-basis: 100%; }
 .rating-panel { display: grid; grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.6fr); align-items: center; gap: 1rem; margin: 1rem 0 1.3rem; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 24px; background: linear-gradient(120deg, rgba(255, 247, 225, 0.62), rgba(255, 238, 248, 0.62), rgba(240, 238, 255, 0.62)); box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.9); }
 .rating-summary { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.3rem; text-align: center; }
 .rating-summary-stars { color: #dfa64e; font-size: 1.55rem; line-height: 1; }
@@ -516,8 +520,6 @@ button:focus-visible, [role="button"]:focus-visible, [role="radio"]:focus-visibl
   .rating-summary strong { font-size: 1.25rem; }
   .rating-form { align-items: stretch; flex-direction: column; text-align: center; }
   .rating-actions { flex-direction: row; justify-content: center; gap: 0.8rem; }
-  .business-music-heading { align-items: stretch; flex-direction: column; }
-  .business-music-toggle { width: 100%; }
 }
 @media (max-width: 440px) {
   .service-editor-row, .service-add-row { grid-template-columns: minmax(0, 1fr) minmax(82px, 105px) 36px; gap: 0.35rem; }
