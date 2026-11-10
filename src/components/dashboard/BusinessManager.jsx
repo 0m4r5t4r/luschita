@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_SLOTS } from '../../data/constants';
+import { getYouTubeVideoId } from '../../lib/youtube';
 import { useApp } from '../../context/AppContext';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -39,6 +40,7 @@ export default function BusinessManager({ business }) {
     owner: business.owner,
     phone: business.phone,
     location: business.location || '',
+    youtubeUrl: business.youtubeUrl || '',
     imageUrl: business.imageUrl || null,
   });
   const [services, setServices] = useState(() => toServiceRows(business));
@@ -67,6 +69,10 @@ export default function BusinessManager({ business }) {
 
   const save = async (event) => {
     event.preventDefault();
+    const youtubeUrl = profile.youtubeUrl.trim();
+    if (youtubeUrl && !getYouTubeVideoId(youtubeUrl)) {
+      return toast('Ingresa un enlace válido de un video de YouTube.', { type: 'error' });
+    }
     if (services.some((service) => !service.name.trim() || (service.price !== '' && (!Number.isFinite(Number(service.price)) || Number(service.price) < 0)))) {
       return toast('Revisa los nombres de servicios y sus precios.', { type: 'error' });
     }
@@ -77,6 +83,7 @@ export default function BusinessManager({ business }) {
     setBusy(true);
     const { error, data } = await actions.updateBusiness({
       ...profile,
+      youtubeUrl,
       services: services.map((service) => service.name.trim()),
       servicePrices,
       slots,
@@ -209,6 +216,19 @@ export default function BusinessManager({ business }) {
                   onChange={(e) => setProfile((current) => ({ ...current, location: e.target.value }))}
                 />
                 <small>Esta ubicación aparecerá en Explorar para que tus clientes te encuentren.</small>
+              </label>
+              <label className="input-group manager-location-field">
+                <span>Música para tu salón (YouTube)</span>
+                <input
+                  className="glass-input"
+                  type="url"
+                  maxLength={2048}
+                  inputMode="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={profile.youtubeUrl}
+                  onChange={(e) => setProfile((current) => ({ ...current, youtubeUrl: e.target.value }))}
+                />
+                <small>Agrega un video o canción. Tus clientes podrán iniciar y detener la reproducción desde tu perfil.</small>
               </label>
               <div className="manager-type-note">
                 <span>Especialidad</span>

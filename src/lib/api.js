@@ -71,6 +71,7 @@ const mapOwnBusiness = (b, appointments) => ({
   weeklySchedule: b.weekly_schedule,
   imageUrl: b.image_url,
   location: b.location || '',
+  youtubeUrl: b.youtube_url || '',
   wallet: {
     balance: Number(b.balance),
     totalSpent: Number(b.total_spent),
@@ -154,6 +155,7 @@ export async function updateBusinessSettings(profile, photoFile, userId) {
     p_weekly_schedule: profile.weeklySchedule,
     p_location: profile.location,
     p_image_url: imageUrl,
+    p_youtube_url: profile.youtubeUrl || null,
   }));
 
   if (result.error && uploadedPath) {
@@ -192,6 +194,7 @@ export async function fetchPublicBusinesses() {
       imageUrl: b.image_url,
       weeklySchedule: b.weekly_schedule,
       location: b.location || '',
+      youtubeUrl: b.youtube_url || '',
       averageRating: Number(b.average_rating || 0),
       ratingCount: Number(b.rating_count || 0),
       // Formato compatible con SlotGrid/BusinessCard: cupos ocupados como "citas" mínimas.
